@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>協力率ダッシュボード</title>
+<meta name="robots" content="noindex">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f3ef; --surface:#fcfcfb; --line:#e2e0d8; --grid:#ecebe5;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8983;
+  --series-1:#2a78d6; --accent:#c98500; --ok:#1d8a4c; --ng:#c0392b;
+}
+@media (prefers-color-scheme:dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme:dark;
+    --bg:#121211; --surface:#1a1a19; --line:#2f2e2c; --grid:#262624;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8c8b84;
+    --series-1:#3987e5; --accent:#f0b44a; --ok:#5cc98a; --ng:#ff8f84;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121211; --surface:#1a1a19; --line:#2f2e2c; --grid:#262624;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8c8b84;
+  --series-1:#3987e5; --accent:#f0b44a; --ok:#5cc98a; --ng:#ff8f84;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Zen Kaku Gothic New',system-ui,-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;font-size:15px}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--ink-2);font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type=text],input[type=password],select{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+input.url{flex:1 1 360px;min-width:0}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+label.ck{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--ink-2)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile .k{font-size:12.5px;color:var(--ink-2)}
+.tile .v{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.tile .v small{font-size:14px;color:var(--ink-2);font-weight:500}
+h2{font-size:17px;margin:0 0 4px}
+.note{font-size:12.5px;color:var(--ink-3);margin-top:6px}
+#chart{width:100%;position:relative}
+#chart svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);padding:8px 10px;border-radius:8px;font-size:13px;line-height:1.5;display:none;white-space:nowrap;z-index:5}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--ink-2);font-weight:600;font-size:12.5px}
+.scroll{overflow-x:auto}
+.status{font-size:13px;color:var(--ink-2)}
+.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}
+details summary{cursor:pointer;color:var(--ink-2)}
+.big main{max-width:1400px}
+.big .tile .v{font-size:44px}
+.big #chart text{font-size:17px}
+</style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h1>取調室のジレンマ ― 協力率ダッシュボード</h1>
+      <div class="sub">相手ごとの「黙秘（協力）」の割合。データは Google スプレッドシートから読み込みます。</div>
+    </div>
+    <div class="row">
+      <button id="bigbtn" title="授業で投影するとき用">投影モード</button>
+      <button id="themebtn">明暗切替</button>
+    </div>
+  </div>
+
+  <div class="card" id="setup">
+    <div class="row">
+      <input class="url" type="text" id="url" placeholder="Apps Script のウェブアプリ URL（https://script.google.com/macros/s/…/exec）">
+      <input type="password" id="key" placeholder="合言葉" style="width:150px">
+      <button class="primary" id="load">読み込む</button>
+      <label class="ck"><input type="checkbox" id="auto"> 10秒ごとに自動更新</label>
+    </div>
+    <div class="status" id="status" style="margin-top:8px">URLと合言葉を入れて「読み込む」を押してください。（?demo=1 を付けるとダミーデータで表示を確認できます）</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label class="ck">日付 <select id="f-date"><option value="">すべて</option></select></label>
+      <label class="ck"><input type="checkbox" id="f-first" checked> 各学生の1回目のプレイだけ使う</label>
+      <label class="ck"><input type="checkbox" id="f-complete" checked> 全員と対戦し終えた記録だけ</label>
+      <label class="ck"><input type="checkbox" id="f-test" checked> 「TEST」で始まる学籍番号を除く</label>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">参加した学生</div><div class="v" id="t-n">–</div></div>
+    <div class="tile"><div class="k">集計に使った選択の数</div><div class="v" id="t-trials">–</div></div>
+    <div class="tile"><div class="k">全体の協力率（黙秘）</div><div class="v" id="t-rate">–</div></div>
+    <div class="tile"><div class="k">ルール確認の正答率</div><div class="v" id="t-comp">–</div></div>
+  </div>
+
+  <div class="card">
+    <h2>相手別の協力率</h2>
+    <div class="sub">棒＝黙秘を選んだ割合。細い線＝95%信頼区間。点線＝全体平均。</div>
+    <div id="chart"><div class="tip" id="tip"></div></div>
+    <div class="note">相手（コンピュータ側）は、どのキャラクターでも同じ確率でランダムに黙秘／自白しています。ちがうのは見た目とセリフの口調だけです。</div>
+  </div>
+
+  <div class="card">
+    <h2>相手別の詳細</h2>
+    <div class="scroll"><table id="detail"></table></div>
+    <div class="note">考えた時間＝ボタンが出てから「これで決める」を押すまで（中央値）。</div>
+  </div>
+
+  <div class="card">
+    <h2>データのダウンロード</h2>
+    <div class="row" style="margin-top:8px">
+      <button id="dl-long">1選択＝1行のCSV（分析用）</button>
+      <button id="dl-wide">1人＝1行のCSV（Excel集計用）</button>
+      <button id="dl-roster">参加者名簿のCSV（参加点用）</button>
+    </div>
+    <div class="note">ダウンロードは上の絞り込み条件を反映します（名簿は絞り込みに関係なく、1回でもプレイした全員）。重複送信された行は自動で除いています。</div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>参加者一覧（参加点用）</summary>
+      <div class="scroll" style="margin-top:10px"><table id="roster"></table></div>
+    </details>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script>
+(function(){
+  const CHARS = [
+    ['yakuza','こわそうなヤクザ'],['woman','優しそうな女性'],['alien','宇宙人'],['robot','かわいいロボット'],
+    ['shiba','柴犬'],['computer','無機的なコンピュータ'],['child','子ども'],
+  ];
+  const NAME = Object.fromEntries(CHARS);
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const ls = { get(k){ try{return localStorage.getItem(k)||'';}catch(e){return '';} }, set(k,v){ try{localStorage.setItem(k,v);}catch(e){} } };
+
+  $('url').value = ls.get('pd_admin_url') || (window.PD_CONFIG && PD_CONFIG.GAS_URL) || '';
+  $('key').value = ls.get('pd_admin_key');
+
+  // テーマ・投影モード
+  $('themebtn').onclick = () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark';
+    render();
+  };
+  $('bigbtn').onclick = () => { document.body.classList.toggle('big'); render(); };
+
+  let RAW = [];
+
+  // ---------- 読み込み ----------
+  async function load() {
+    if (params.get('demo') === '1') { RAW = demo(); setStatus('ok', 'ダミーデータを表示しています（' + RAW.length + '行）'); afterLoad(); return; }
+    const url = $('url').value.trim(), key = $('key').value;
+    if (!url || !key) { setStatus('ng', 'URLと合言葉を入れてください。'); return; }
+    ls.set('pd_admin_url', url); ls.set('pd_admin_key', key);
+    setStatus('', '読み込み中…');
+    try {
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key) + '&t=' + Date.now());
+      const j = await res.json();
+      if (!j.ok) { setStatus('ng', j.error === 'unauthorized' ? '合言葉がちがいます。' : 'エラー：' + j.error); return; }
+      RAW = j.rows || [];
+      setStatus('ok', `読み込み完了：${RAW.length}行（${j.fetched_at || new Date().toLocaleTimeString()}）`);
+      afterLoad();
+    } catch (e) {
+      setStatus('ng', '読み込めませんでした。URLが正しいか、ウェブアプリのアクセス権が「全員」になっているか確認してください。');
+    }
+  }
+  function setStatus(k, m){ const s=$('status'); s.className='status '+k; s.textContent=m; }
+  $('load').onclick = load;
+  let timer = null;
+  $('auto').onchange = (e) => { clearInterval(timer); if (e.target.checked) { load(); timer = setInterval(load, 10000); } };
+
+  function afterLoad() {
+    // 日付の選択肢
+    const sel = $('f-date'), cur = sel.value;
+    const dates = [...new Set(clean(RAW).map(r => (r.started_at||'').slice(0,10)).filter(Boolean))].sort().reverse();
+    sel.innerHTML = '<option value="">すべて</option>' + dates.map(d => `<option ${d===cur?'selected':''}>${d}</option>`).join('');
+    render();
+  }
+  ['f-date','f-first','f-complete','f-test'].forEach(id => $(id).onchange = render);
+
+  // ---------- 整形・絞り込み ----------
+  function clean(rows) {
+    const seen = new Set(), out = [];
+    rows.forEach(r => {
+      const k = r.session_id + '|' + r.trial;
+      if (!r.session_id || seen.has(k)) return;
+      seen.add(k);
+      out.push({ ...r, student_id: String(r.student_id||'').replace(/^'/,''), cooperate: +r.cooperate, rt_ms: +r.rt_ms, trial: +r.trial, attempt: +r.attempt });
+    });
+    return out;
+  }
+  function filtered() {
+    let rows = clean(RAW);
+    if ($('f-test').checked) rows = rows.filter(r => !/^TEST/i.test(r.student_id));
+    const d = $('f-date').value; if (d) rows = rows.filter(r => (r.started_at||'').startsWith(d));
+    const bySess = group(rows, r => r.session_id);
+    if ($('f-complete').checked) rows = rows.filter(r => bySess[r.session_id].length >= CHARS.length);
+    if ($('f-first').checked) {
+      // 学生ごとに最も早く始めたセッションだけ
+      const first = {};
+      Object.values(group(rows, r => r.session_id)).forEach(s => {
+        const r = s[0]; const f = first[r.student_id];
+        if (!f || (r.started_at + r.session_id) < (f.started_at + f.session_id)) first[r.student_id] = r;
+      });
+      const keep = new Set(Object.values(first).map(r => r.session_id));
+      rows = rows.filter(r => keep.has(r.session_id));
+    }
+    return rows;
+  }
+  function group(rows, f){ const g={}; rows.forEach(r => (g[f(r)] = g[f(r)] || []).push(r)); return g; }
+  function wilson(k, n){ if (!n) return [0,0]; const z=1.96, p=k/n, d=1+z*z/n, c=p+z*z/(2*n), m=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n)); return [(c-m)/d,(c+m)/d]; }
+  const pct = (x) => (x*100).toFixed(0) + '%';
+  function median(a){ if(!a.length) return NaN; a=a.slice().sort((x,y)=>x-y); const m=a.length>>1; return a.length%2?a[m]:(a[m-1]+a[m])/2; }
+
+  // ---------- 描画 ----------
+  function render() {
+    const rows = filtered();
+    const sessions = group(rows, r => r.session_id);
+    const students = new Set(rows.map(r => r.student_id));
+    const k = rows.filter(r => r.cooperate === 1).length;
+    $('t-n').innerHTML = students.size + ' <small>人</small>';
+    $('t-trials').textContent = rows.length;
+    $('t-rate').textContent = rows.length ? pct(k / rows.length) : '–';
+    const sessFirst = Object.values(sessions).map(s => s[0]).filter(r => r.comp_correct !== '' && r.comp_correct != null);
+    $('t-comp').textContent = sessFirst.length ? pct(sessFirst.filter(r => +r.comp_correct === 1).length / sessFirst.length) : '–';
+
+    const stats = CHARS.map(([id, name]) => {
+      const rs = rows.filter(r => r.character_id === id);
+      const kk = rs.filter(r => r.cooperate === 1).length;
+      const dev = (d) => { const x = rs.filter(r => (d === 'pc' ? r.device === 'pc' : r.device !== 'pc')); return { n: x.length, k: x.filter(r => r.cooperate === 1).length }; };
+      return { id, name, n: rs.length, k: kk, rate: rs.length ? kk / rs.length : 0, ci: wilson(kk, rs.length), rt: median(rs.map(r => r.rt_ms)), pc: dev('pc'), mobile: dev('mobile') };
+    });
+    drawChart(stats, rows.length ? k / rows.length : null);
+    // 詳細表
+    const fmt = (o) => o.n ? `${pct(o.k / o.n)} <span style="color:var(--ink-3)">(${o.n})</span>` : '–';
+    $('detail').innerHTML = '<tr><th>相手</th><th>協力率</th><th>95%信頼区間</th><th>人数</th><th>PC</th><th>スマホ・タブレット</th><th>考えた時間</th></tr>' +
+      stats.slice().sort((a, b) => b.rate - a.rate).map(s => `<tr><td>${s.name}</td><td><b>${s.n ? pct(s.rate) : '–'}</b></td><td>${s.n ? pct(s.ci[0]) + '–' + pct(s.ci[1]) : '–'}</td><td>${s.n}</td><td>${fmt(s.pc)}</td><td>${fmt(s.mobile)}</td><td>${isNaN(s.rt) ? '–' : (s.rt / 1000).toFixed(1) + '秒'}</td></tr>`).join('');
+    // 名簿（絞り込みに関係なく全員）
+    const all = clean(RAW).filter(r => !($('f-test').checked && /^TEST/i.test(r.student_id)));
+    const ro = Object.entries(group(all, r => r.student_id)).map(([sid, rs]) => {
+      const done = Object.values(group(rs, r => r.session_id)).some(s => s.length >= CHARS.length);
+      return { sid, n: rs.length, done, last: rs.map(r => r.trial_at || r.received_at || '').sort().pop() };
+    }).sort((a, b) => a.sid.localeCompare(b.sid));
+    ROSTER = ro;
+    $('roster').innerHTML = '<tr><th>学籍番号</th><th>記録された選択の数</th><th>最後まで完了</th><th>最終記録</th></tr>' +
+      ro.map(r => `<tr><td>${esc(r.sid)}</td><td>${r.n}</td><td>${r.done ? '✓' : ''}</td><td>${esc(r.last)}</td></tr>`).join('');
+  }
+  let ROSTER = [];
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function drawChart(stats, overall) {
+    const box = $('chart');
+    const big = document.body.classList.contains('big');
+    const W = Math.max(320, box.clientWidth), narrow = W < 560;
+    const rowH = big ? 54 : 40, labelW = narrow ? 112 : (big ? 230 : 170), right = narrow ? 92 : 120, top = 24, bottom = 30;
+    const sorted = stats.slice().sort((a, b) => b.rate - a.rate);
+    const H = top + bottom + rowH * sorted.length;
+    const x = (v) => labelW + v * (W - labelW - right);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="相手別の協力率">`;
+    // グリッド
+    for (let v = 0; v <= 1.0001; v += 0.25) {
+      svg += `<line x1="${x(v)}" x2="${x(v)}" y1="${top - 6}" y2="${H - bottom}" stroke="var(--grid)" stroke-width="1"/>`;
+      svg += `<text x="${x(v)}" y="${H - bottom + 18}" text-anchor="middle" font-size="12" fill="var(--ink-3)">${v * 100}%</text>`;
+    }
+    sorted.forEach((s, i) => {
+      const y = top + i * rowH, bh = Math.min(22, rowH * 0.5), cy = y + rowH / 2;
+      svg += `<text x="${labelW - 10}" y="${cy + 5}" text-anchor="end" font-size="${big ? 17 : 14}" fill="var(--ink)">${s.name}</text>`;
+      if (s.n) {
+        const w = Math.max(0, x(s.rate) - x(0));
+        // 右端だけ角丸（基線側は四角）
+        const r = Math.min(4, w);
+        svg += `<path d="M${x(0)} ${cy - bh / 2} h${w - r} q${r} 0 ${r} ${r} v${bh - 2 * r} q0 ${r} ${-r} ${r} h${-(w - r)} z" fill="var(--series-1)"/>`;
+        svg += `<line x1="${x(s.ci[0])}" x2="${x(s.ci[1])}" y1="${cy}" y2="${cy}" stroke="var(--ink)" stroke-width="1.5" opacity=".55"/>`;
+        [s.ci[0], s.ci[1]].forEach(v => svg += `<line x1="${x(v)}" x2="${x(v)}" y1="${cy - 6}" y2="${cy + 6}" stroke="var(--ink)" stroke-width="1.5" opacity=".55"/>`);
+        svg += `<text x="${x(1) + 10}" y="${cy + 5}" font-size="${big ? 18 : 14}" fill="var(--ink)" font-weight="700">${pct(s.rate)}<tspan fill="var(--ink-3)" font-weight="400" font-size="12"> n=${s.n}</tspan></text>`;
+      } else {
+        svg += `<text x="${x(0) + 6}" y="${cy + 5}" font-size="13" fill="var(--ink-3)">データなし</text>`;
+      }
+      svg += `<rect class="hit" data-i="${i}" x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"/>`;
+    });
+    if (overall != null) {
+      svg += `<line x1="${x(overall)}" x2="${x(overall)}" y1="${top - 10}" y2="${H - bottom}" stroke="var(--ink-2)" stroke-dasharray="4 4" stroke-width="1.5"/>`;
+      svg += `<text x="${x(overall)}" y="${top - 12}" text-anchor="middle" font-size="12" fill="var(--ink-2)">全体平均 ${pct(overall)}</text>`;
+    }
+    svg += '</svg>';
+    const tip = $('tip');
+    box.innerHTML = svg; box.appendChild(tip);
+    box.querySelectorAll('.hit').forEach(el => {
+      el.addEventListener('mousemove', (e) => {
+        const s = sorted[+el.dataset.i]; if (!s.n) return;
+        tip.innerHTML = `<b>${s.name}</b><br>黙秘 ${s.k} ／ 自白 ${s.n - s.k}（${s.n}人）<br>協力率 ${pct(s.rate)}（95%CI ${pct(s.ci[0])}–${pct(s.ci[1])}）`;
+        tip.style.display = 'block';
+        const b = box.getBoundingClientRect();
+        tip.style.left = Math.min(e.clientX - b.left + 14, b.width - tip.offsetWidth - 4) + 'px';
+        tip.style.top = (e.clientY - b.top + 14) + 'px';
+      });
+      el.addEventListener('mouseleave', () => (tip.style.display = 'none'));
+    });
+  }
+  window.addEventListener('resize', () => RAW.length && render());
+
+  // ---------- CSV ----------
+  function csv(rows, cols, name) {
+    const e = (v) => { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const text = '﻿' + [cols.join(',')].concat(rows.map(r => cols.map(c => e(r[c])).join(','))).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  $('dl-long').onclick = () => {
+    const rows = filtered(); if (!rows.length) return;
+    const cols = Object.keys(rows[0]);
+    csv(rows, cols, `pd_trials_${stamp()}.csv`);
+  };
+  $('dl-wide').onclick = () => {
+    const rows = filtered(); if (!rows.length) return;
+    const out = Object.values(group(rows, r => r.session_id)).map(s => {
+      const o = { student_id: s[0].student_id, session_id: s[0].session_id, attempt: s[0].attempt, started_at: s[0].started_at, device: s[0].device, comp_correct: s[0].comp_correct, button_order: s[0].button_order };
+      let tot = 0;
+      CHARS.forEach(([id]) => { const t = s.find(r => r.character_id === id); o['coop_' + id] = t ? t.cooperate : ''; o['rt_' + id] = t ? t.rt_ms : ''; o['order_' + id] = t ? t.trial : ''; if (t) tot += t.cooperate; });
+      o.coop_total = tot;
+      return o;
+    });
+    csv(out, Object.keys(out[0]), `pd_by_student_${stamp()}.csv`);
+  };
+  $('dl-roster').onclick = () => {
+    if (!ROSTER.length) return;
+    csv(ROSTER.map(r => ({ 学籍番号: r.sid, 記録数: r.n, 完了: r.done ? 1 : 0, 最終記録: r.last })), ['学籍番号', '記録数', '完了', '最終記録'], `pd_roster_${stamp()}.csv`);
+  };
+
+  // ---------- ダミーデータ ----------
+  function demo() {
+    const base = { yakuza: .35, woman: .7, alien: .45, robot: .62, shiba: .78, computer: .4, child: .74 };
+    const rows = [];
+    for (let s = 0; s < 58; s++) {
+      const sid = 'S' + String(2400100 + s), sess = 'demo' + s, dev = Math.random() < .6 ? 'smartphone' : 'pc';
+      const ord = CHARS.map(c => c[0]).sort(() => Math.random() - .5);
+      const bias = (Math.random() - .5) * .5;
+      ord.forEach((id, i) => {
+        const c = Math.random() < base[id] + bias ? 1 : 0;
+        rows.push({ received_at: '2026-10-08 10:4' + (s % 10), session_id: sess, student_id: sid, attempt: 1, trial: i + 1, character_id: id, character_name: NAME[id],
+          choice: c ? 'silent' : 'confess', cooperate: c, rt_ms: Math.round(3000 + Math.random() * 9000), device: dev, comp_correct: Math.random() < .9 ? 1 : 0,
+          started_at: '2026-10-08 10:3' + (s % 10) + ':00', trial_at: '2026-10-08 10:4' + (s % 10) + ':00', partner_choice: Math.random() < .5 ? 'silent' : 'confess' });
+      });
+    }
+    return rows;
+  }
+
+  if (params.get('demo') === '1') load();
+  else if ($('url').value && $('key').value) load();
+})();
+</script>
+</body>
+</html>
