@@ -11,7 +11,7 @@
  *  5. 表示された「ウェブアプリ URL」を config.js の GAS_URL に貼る
  */
 
-const ADMIN_KEY = 'ここを好きな合言葉に変えてください';
+const ADMIN_KEY = 'pochi';
 const SHEET_NAME = 'log';
 
 const HEADERS = [
